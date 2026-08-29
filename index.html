@@ -1,0 +1,1611 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>The Backrooms 3D: Cinematic Animations</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Share Tech Mono', monospace;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #game-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .vhs-glitch {
+            font-family: 'VT323', monospace;
+            text-shadow: 3px 0 #ff0055, -3px 0 #00e1ff;
+            animation: glitch 1.2s infinite alternate;
+        }
+
+        @keyframes glitch {
+            0% { text-shadow: 3px 0 #ff0055, -3px 0 #00e1ff; }
+            30% { text-shadow: -3px 0 #ff0055, 3px 0 #00e1ff; }
+            70% { text-shadow: 4px -2px #ff0055, -2px 3px #00e1ff; }
+            100% { text-shadow: -2px 0 #ff0055, 2px 0 #00e1ff; }
+        }
+
+        .kbd-badge {
+            background: rgba(234, 179, 8, 0.2);
+            border: 1px solid rgba(234, 179, 8, 0.5);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: #fef08a;
+        }
+
+        #level-transition-banner {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 25;
+            opacity: 0;
+            transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+        }
+
+        /* Jumpscare Flash Overlay */
+        #jumpscare-flash {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(circle, rgba(255, 0, 0, 0.95) 0%, rgba(0, 0, 0, 1) 90%);
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.05s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-black text-amber-100 flex items-center justify-center">
+
+    <div id="jumpscare-flash"></div>
+
+    <!-- HUD Overlay -->
+    <div id="hud-cam" class="absolute top-4 left-4 right-4 flex justify-between items-start z-20 pointer-events-none text-amber-200 text-xl tracking-widest hidden">
+        <div class="space-y-1">
+            <div class="flex items-center gap-2">
+                <span class="w-3 h-3 bg-red-600 rounded-full animate-ping"></span>
+                <span class="text-red-500 font-bold font-mono">REC ●</span>
+                <span id="cam-timer" class="font-mono">00:00:00</span>
+            </div>
+            <div class="text-xs text-yellow-400 font-bold" id="level-hud-name">LEVEL 0: THE SUBROOMS</div>
+            <div class="text-xs text-red-500/90 font-bold">DREIGING: <span id="monster-type-val" class="text-white">Bacteria</span> (<span id="monster-dist-val">8.0m</span>)</div>
+        </div>
+
+        <div class="text-right space-y-1">
+            <div class="text-yellow-300 font-bold text-2xl drop-shadow font-mono">
+                AFSTAND: <span id="score-val">0</span>m
+            </div>
+            <div class="text-cyan-300 text-lg font-mono">
+                WATERFLESJES: <span id="water-val">0</span>x
+            </div>
+        </div>
+    </div>
+
+    <!-- LEVEL TRANSITION BANNER -->
+    <div id="level-transition-banner">
+        <h2 id="trans-title" class="text-5xl md:text-7xl font-black text-red-500 vhs-glitch mb-2 text-center">NOCLIPPING...</h2>
+        <p id="trans-subtitle" class="text-yellow-300 text-xl font-mono tracking-widest text-center">JE VALT DOOR DE WERKELIJKHEID</p>
+    </div>
+
+    <!-- KIJK ACHTEROM KNOP -->
+    <div id="look-back-container" class="absolute bottom-6 right-6 z-20 hidden">
+        <button id="look-back-btn" class="bg-yellow-500/80 hover:bg-yellow-400 active:bg-yellow-300 text-black font-black px-6 py-4 rounded-xl border-2 border-yellow-200 shadow-xl text-sm tracking-wider cursor-pointer transition">
+            👁️ KIJK ACHTEROM [R]
+        </button>
+    </div>
+
+    <!-- Ondertitels -->
+    <div id="subtitles" class="absolute bottom-16 inset-x-0 text-center z-20 text-yellow-200 text-2xl md:text-3xl font-bold tracking-widest drop-shadow-[0_4px_12px_rgba(0,0,0,1)] pointer-events-none px-6 font-mono hidden">
+    </div>
+
+    <!-- 3D Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- START MENU -->
+    <div id="start-screen" class="absolute z-30 inset-0 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+        
+        <!-- HOOFDPAGINA -->
+        <div id="menu-page-main" class="menu-page max-w-md w-full bg-black/85 border border-yellow-500/50 p-6 rounded-2xl text-center shadow-[0_0_60px_rgba(217,119,6,0.3)]">
+            <div class="flex justify-between items-center text-xs text-yellow-500/70 mb-4 font-mono">
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span> BODYCAM VHS-1998</span>
+                <span>STATUS: CINEMATIC RIG</span>
+            </div>
+
+            <h1 class="text-5xl font-black text-yellow-400 tracking-wider vhs-glitch mb-1">
+                LOST FOOTAGE 3D
+            </h1>
+            <p class="text-amber-200/60 text-xs tracking-[0.25em] mb-6 font-mono uppercase">KIES SPELMODUS</p>
+
+            <div class="space-y-3 mb-6">
+                <button onclick="startStoryMode()" class="w-full py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-black text-xl rounded-xl tracking-widest transition transform active:scale-95 shadow-[0_0_25px_rgba(234,179,8,0.5)] border-2 border-yellow-300 cursor-pointer">
+                    📖 STORYLINE MODE
+                </button>
+                <button onclick="switchPage('menu-page-level-select')" class="w-full py-4 bg-yellow-950/60 hover:bg-yellow-900/80 text-yellow-300 font-black text-xl rounded-xl tracking-widest transition transform active:scale-95 border-2 border-yellow-600/50 cursor-pointer">
+                    🗺️ LEVEL SELECT
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="switchPage('menu-page-controls')" class="py-2.5 bg-black/60 hover:bg-yellow-950/40 border border-yellow-600/30 text-yellow-400 text-xs font-bold rounded-lg transition cursor-pointer">
+                    🎮 Besturing
+                </button>
+                <button onclick="switchPage('menu-page-lore')" class="py-2.5 bg-black/60 hover:bg-yellow-950/40 border border-yellow-600/30 text-yellow-400 text-xs font-bold rounded-lg transition cursor-pointer">
+                    📜 Uitleg
+                </button>
+            </div>
+        </div>
+
+        <!-- LEVEL SELECT PAGINA -->
+        <div id="menu-page-level-select" class="menu-page hidden max-w-md w-full bg-black/90 border border-yellow-500/40 p-6 rounded-2xl shadow-2xl">
+            <h2 class="text-2xl font-bold text-yellow-400 mb-4 text-center border-b border-yellow-600/30 pb-2">🗺️ LEVEL & MONSTER SELECTIE</h2>
+            
+            <div class="space-y-2 mb-6 font-mono text-sm max-h-64 overflow-y-auto pr-1">
+                <button onclick="startSpecificLevel(0)" class="w-full p-3 bg-yellow-950/40 hover:bg-yellow-900/60 border border-yellow-600/40 rounded-lg text-left text-yellow-200 flex justify-between items-center transition cursor-pointer">
+                    <div>
+                        <div class="font-bold text-yellow-400">LEVEL 0 - The Subrooms</div>
+                        <div class="text-xs text-amber-200/60">Monster: Bacteria (Spastische Schaduw)</div>
+                    </div>
+                    <span>▶</span>
+                </button>
+
+                <button onclick="startSpecificLevel(1)" class="w-full p-3 bg-yellow-950/40 hover:bg-yellow-900/60 border border-yellow-600/40 rounded-lg text-left text-yellow-200 flex justify-between items-center transition cursor-pointer">
+                    <div>
+                        <div class="font-bold text-cyan-400">LEVEL 1 - Habitable Zone</div>
+                        <div class="text-xs text-amber-200/60">Monster: Skin-Stealer (Rennende Jager)</div>
+                    </div>
+                    <span>▶</span>
+                </button>
+
+                <button onclick="startSpecificLevel(2)" class="w-full p-3 bg-yellow-950/40 hover:bg-yellow-900/60 border border-yellow-600/40 rounded-lg text-left text-yellow-200 flex justify-between items-center transition cursor-pointer">
+                    <div>
+                        <div class="font-bold text-orange-400">LEVEL 2 - Pipe Dreams</div>
+                        <div class="text-xs text-amber-200/60">Monster: The Clump (Golfende Tentakels)</div>
+                    </div>
+                    <span>▶</span>
+                </button>
+
+                <button onclick="startSpecificLevel(3)" class="w-full p-3 bg-yellow-950/40 hover:bg-yellow-900/60 border border-yellow-600/40 rounded-lg text-left text-yellow-200 flex justify-between items-center transition cursor-pointer">
+                    <div>
+                        <div class="font-bold text-red-400">LEVEL 3 - Electrical Station</div>
+                        <div class="text-xs text-amber-200/60">Monster: The Hound (Galopbeentjes)</div>
+                    </div>
+                    <span>▶</span>
+                </button>
+
+                <button onclick="startSpecificLevel(4)" class="w-full p-3 bg-yellow-950/40 hover:bg-yellow-900/60 border border-yellow-600/40 rounded-lg text-left text-yellow-200 flex justify-between items-center transition cursor-pointer">
+                    <div>
+                        <div class="font-bold text-emerald-400">LEVEL 4 - Abandoned Office</div>
+                        <div class="text-xs text-amber-200/60">Monster: The Faceling (Porselein Zwever)</div>
+                    </div>
+                    <span>▶</span>
+                </button>
+            </div>
+
+            <button onclick="switchPage('menu-page-main')" class="w-full py-3 bg-yellow-600/80 hover:bg-yellow-500 text-black font-bold text-base rounded-lg transition cursor-pointer">
+                ← Terug naar Menu
+            </button>
+        </div>
+
+        <!-- BESTURING PAGINA -->
+        <div id="menu-page-controls" class="menu-page hidden max-w-md w-full bg-black/90 border border-yellow-500/40 p-6 rounded-2xl shadow-2xl">
+            <h2 class="text-2xl font-bold text-yellow-400 mb-4 text-center border-b border-yellow-600/30 pb-2">🎮 BESTURING</h2>
+            
+            <div class="space-y-4 text-sm text-amber-200 font-mono mb-6">
+                <div class="bg-black/60 p-3 rounded border border-yellow-900/40">
+                    <div class="text-yellow-400 font-bold mb-1">TOETSENBORD:</div>
+                    <p>• Uitwijken: <span class="kbd-badge">A</span> <span class="kbd-badge">D</span> of <span class="kbd-badge">←</span> <span class="kbd-badge">→</span></p>
+                    <p>• Springen: <span class="kbd-badge">W</span> / <span class="kbd-badge">Spatie</span></p>
+                    <p>• Bukken: <span class="kbd-badge">S</span> / <span class="kbd-badge">↓</span></p>
+                    <p>• 👁️ Achterom kijken: <span class="kbd-badge">R</span> (Ingedrukt houden)</p>
+                </div>
+
+                <div class="bg-black/60 p-3 rounded border border-yellow-900/40">
+                    <div class="text-yellow-400 font-bold mb-1">MOBIEL / TOUCH:</div>
+                    <p>• Swipen om te sturen, springen en bukken</p>
+                    <p>• Tik op de gele knop rechtsonder om achterom te kijken!</p>
+                </div>
+            </div>
+
+            <button onclick="switchPage('menu-page-main')" class="w-full py-3 bg-yellow-600/80 hover:bg-yellow-500 text-black font-bold text-base rounded-lg transition cursor-pointer">
+                ← Terug naar Menu
+            </button>
+        </div>
+
+        <!-- UITLEG PAGINA -->
+        <div id="menu-page-lore" class="menu-page hidden max-w-md w-full bg-black/90 border border-yellow-500/40 p-6 rounded-2xl shadow-2xl">
+            <h2 class="text-2xl font-bold text-yellow-400 mb-3 text-center border-b border-yellow-600/30 pb-2">📜 SPELREGELS</h2>
+            
+            <div class="text-xs text-amber-100/90 font-mono leading-relaxed space-y-2 mb-6 bg-black/60 p-4 rounded border border-yellow-900/40">
+                <p>• **Storyline Mode**: Je begint bij Level 0. Elke **1000 meter** zak je vloeiend door de vloer naar het volgende level met een nieuw monster!</p>
+                <p>• **Veilige Noclip**: Tijdens het zakken door de vloer ben je **onkwetsbaar**!</p>
+                <p>• **Level Select**: Kies zelf op welk level je direct wilt rennen!</p>
+                <p class="text-cyan-300 pt-2 border-t border-yellow-800/40">
+                    💡 Pak **Amandelwater** op voor extra afstand op het monster!
+                </p>
+            </div>
+
+            <button onclick="switchPage('menu-page-main')" class="w-full py-3 bg-yellow-600/80 hover:bg-yellow-500 text-black font-bold text-base rounded-lg transition cursor-pointer">
+                ← Terug naar Menu
+            </button>
+        </div>
+
+    </div>
+
+    <!-- GAME OVER SCHERM MET MENU KNOP -->
+    <div id="gameover-screen" class="absolute z-30 inset-0 flex flex-col items-center justify-center bg-black/95 p-6 text-center hidden">
+        <div class="max-w-md w-full bg-red-950/20 border border-red-600/60 p-8 rounded-2xl shadow-[0_0_60px_rgba(220,38,38,0.4)] backdrop-blur-md">
+            <h2 class="text-5xl font-black text-red-500 tracking-wider mb-2 vhs-glitch">
+                TAPE ONDERBROKEN
+            </h2>
+            <p id="death-cause" class="text-red-300 text-sm mb-6 font-mono">
+                Het wezen heeft de opname beëindigd...
+            </p>
+
+            <div class="bg-black/80 border border-red-900/60 rounded-xl p-4 mb-6 space-y-2 font-mono text-center text-sm">
+                <div class="flex justify-between text-amber-200">
+                    <span>AFGELEGDE AFSTAND:</span>
+                    <span id="final-score" class="font-bold text-yellow-400 text-lg">0m</span>
+                </div>
+                <div class="flex justify-between text-amber-200">
+                    <span>BEREIKT LEVEL:</span>
+                    <span id="final-level" class="font-bold text-red-400 text-lg">Level 0</span>
+                </div>
+                <div class="flex justify-between text-amber-200">
+                    <span>AMANDELWATER:</span>
+                    <span id="final-water" class="font-bold text-cyan-400 text-lg">0</span>
+                </div>
+                <div class="border-t border-red-900/60 pt-2 flex justify-between text-amber-300">
+                    <span>RECORDAFSTAND:</span>
+                    <span id="high-score" class="font-bold text-white text-lg">0m</span>
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                <button id="restart-btn" class="w-full py-3.5 bg-red-600 hover:bg-red-500 text-white font-black text-lg rounded-xl tracking-widest transition transform active:scale-95 shadow-[0_0_20px_rgba(239,68,68,0.6)] cursor-pointer">
+                    ↻ OPNIEUW PROBEREN
+                </button>
+                <button id="main-menu-btn" class="w-full py-3.5 bg-yellow-950/80 hover:bg-yellow-900 text-yellow-300 border border-yellow-600/50 font-bold text-base rounded-xl tracking-widest transition transform active:scale-95 cursor-pointer">
+                    🏠 HOOFDMENU
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchPage(pageId) {
+            document.querySelectorAll('.menu-page').forEach(page => page.classList.add('hidden'));
+            document.getElementById(pageId).classList.remove('hidden');
+        }
+
+        // --- GELUIDSSYSTEEM ---
+        class AudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.humOsc = null;
+                this.humGain = null;
+            }
+
+            init() {
+                if (this.ctx) return;
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioCtx();
+                this.startFluorescentHum();
+            }
+
+            startFluorescentHum() {
+                if (!this.ctx) return;
+                this.humOsc = this.ctx.createOscillator();
+                this.humGain = this.ctx.createGain();
+                this.humOsc.type = 'sawtooth';
+                this.humOsc.frequency.setValueAtTime(50, this.ctx.currentTime);
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(115, this.ctx.currentTime);
+                filter.Q.setValueAtTime(4.5, this.ctx.currentTime);
+
+                this.humGain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+
+                this.humOsc.connect(filter);
+                filter.connect(this.humGain);
+                this.humGain.connect(this.ctx.destination);
+                this.humOsc.start();
+            }
+
+            playLightFlickerSound() {
+                if (!this.ctx) return;
+                const bufferSize = this.ctx.sampleRate * 0.08;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2));
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.18, this.ctx.currentTime);
+                noise.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start();
+            }
+
+            playFootstep(isWet = true) {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(80, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.1);
+
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.1);
+
+                if (isWet) {
+                    const bufSize = this.ctx.sampleRate * 0.08;
+                    const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+                    const d = buf.getChannelData(0);
+                    for (let i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
+                    
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = buf;
+                    const nGain = this.ctx.createGain();
+                    nGain.gain.setValueAtTime(0.12, now);
+                    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+                    noise.connect(nGain);
+                    nGain.connect(this.ctx.destination);
+                    noise.start(now);
+                }
+            }
+
+            playJump() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(280, now + 0.14);
+
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.14);
+            }
+
+            playCollect() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(880, now + 0.08);
+
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+
+            playNoclipSound() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 1.2);
+
+                gain.gain.setValueAtTime(0.6, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 1.2);
+            }
+
+            playJumpscareRoar() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                const osc1 = this.ctx.createOscillator();
+                const gain1 = this.ctx.createGain();
+                osc1.type = 'sawtooth';
+                osc1.frequency.setValueAtTime(900, now);
+                osc1.frequency.exponentialRampToValueAtTime(35, now + 1.6);
+
+                gain1.gain.setValueAtTime(1.0, now);
+                gain1.gain.exponentialRampToValueAtTime(0.01, now + 1.6);
+
+                osc1.connect(gain1);
+                gain1.connect(this.ctx.destination);
+                osc1.start(now);
+                osc1.stop(now + 1.6);
+
+                const bufSize = this.ctx.sampleRate * 1.6;
+                const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1);
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buf;
+                const nGain = this.ctx.createGain();
+                nGain.gain.setValueAtTime(0.85, now);
+                nGain.gain.exponentialRampToValueAtTime(0.01, now + 1.6);
+
+                noise.connect(nGain);
+                nGain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            playBreathing() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const bufSize = this.ctx.sampleRate * 0.5;
+                const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buf;
+                
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(320, now);
+                filter.Q.setValueAtTime(2.5, now);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.01, now);
+                gain.gain.linearRampToValueAtTime(0.15, now + 0.25);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+        }
+
+        const audio = new AudioEngine();
+
+        // --- MULTI-LEVEL TEXTUREN ---
+        function generateLevelTextures() {
+            // LEVEL 0: Iconic Arrow/Chevron Pattern Wallpaper & Warm Tan Carpet
+            const w0Canvas = document.createElement('canvas');
+            w0Canvas.width = 512; w0Canvas.height = 512;
+            const w0Ctx = w0Canvas.getContext('2d');
+            
+            w0Ctx.fillStyle = '#9cb832';
+            w0Ctx.fillRect(0, 0, 512, 512);
+
+            w0Ctx.fillStyle = '#7a9622';
+            for (let x = 0; x < 512; x += 32) {
+                for (let y = 0; y < 512; y += 64) {
+                    w0Ctx.beginPath();
+                    w0Ctx.moveTo(x + 16, y + 10);
+                    w0Ctx.lineTo(x + 28, y + 35);
+                    w0Ctx.lineTo(x + 22, y + 35);
+                    w0Ctx.lineTo(x + 16, y + 22);
+                    w0Ctx.lineTo(x + 10, y + 35);
+                    w0Ctx.lineTo(x + 4, y + 35);
+                    w0Ctx.closePath();
+                    w0Ctx.fill();
+
+                    w0Ctx.beginPath();
+                    w0Ctx.moveTo(x + 16, y + 40);
+                    w0Ctx.lineTo(x + 28, y + 65);
+                    w0Ctx.lineTo(x + 22, y + 65);
+                    w0Ctx.lineTo(x + 16, y + 52);
+                    w0Ctx.lineTo(x + 10, y + 65);
+                    w0Ctx.lineTo(x + 4, y + 65);
+                    w0Ctx.closePath();
+                    w0Ctx.fill();
+                }
+            }
+            const wallL0 = new THREE.CanvasTexture(w0Canvas);
+            wallL0.wrapS = THREE.RepeatWrapping; wallL0.wrapT = THREE.RepeatWrapping;
+
+            const c0Canvas = document.createElement('canvas');
+            c0Canvas.width = 512; c0Canvas.height = 512;
+            const c0Ctx = c0Canvas.getContext('2d');
+            c0Ctx.fillStyle = '#d4aa3b';
+            c0Ctx.fillRect(0, 0, 512, 512);
+            for (let i = 0; i < 12000; i++) {
+                c0Ctx.fillStyle = Math.random() > 0.5 ? 'rgba(120, 90, 20, 0.25)' : 'rgba(240, 200, 80, 0.2)';
+                c0Ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+            }
+            const carpetL0 = new THREE.CanvasTexture(c0Canvas);
+            carpetL0.wrapS = THREE.RepeatWrapping; carpetL0.wrapT = THREE.RepeatWrapping;
+
+            // LEVEL 1: Concrete Warehouse
+            const w1Canvas = document.createElement('canvas');
+            w1Canvas.width = 512; w1Canvas.height = 512;
+            const w1Ctx = w1Canvas.getContext('2d');
+            w1Ctx.fillStyle = '#55585a'; w1Ctx.fillRect(0, 0, 512, 512);
+            w1Ctx.strokeStyle = '#383b3d'; w1Ctx.lineWidth = 4;
+            w1Ctx.strokeRect(0, 0, 512, 512);
+            const wallL1 = new THREE.CanvasTexture(w1Canvas);
+            wallL1.wrapS = THREE.RepeatWrapping; wallL1.wrapT = THREE.RepeatWrapping;
+
+            const c1Canvas = document.createElement('canvas');
+            c1Canvas.width = 512; c1Canvas.height = 512;
+            const c1Ctx = c1Canvas.getContext('2d');
+            c1Ctx.fillStyle = '#3a3d3f'; c1Ctx.fillRect(0, 0, 512, 512);
+            for (let i = 0; i < 5000; i++) {
+                c1Ctx.fillStyle = 'rgba(10, 10, 10, 0.2)';
+                c1Ctx.fillRect(Math.random() * 512, Math.random() * 512, 3, 3);
+            }
+            const floorL1 = new THREE.CanvasTexture(c1Canvas);
+            floorL1.wrapS = THREE.RepeatWrapping; floorL1.wrapT = THREE.RepeatWrapping;
+
+            // LEVEL 2: Pipe Dreams
+            const w2Canvas = document.createElement('canvas');
+            w2Canvas.width = 512; w2Canvas.height = 512;
+            const w2Ctx = w2Canvas.getContext('2d');
+            w2Ctx.fillStyle = '#3b251a'; w2Ctx.fillRect(0, 0, 512, 512);
+            for (let i = 0; i < 30; i++) {
+                w2Ctx.fillStyle = 'rgba(90, 40, 20, 0.4)';
+                w2Ctx.fillRect(Math.random() * 512, Math.random() * 512, 60, 60);
+            }
+            const wallL2 = new THREE.CanvasTexture(w2Canvas);
+            wallL2.wrapS = THREE.RepeatWrapping; wallL2.wrapT = THREE.RepeatWrapping;
+
+            // LEVEL 3: Electrical Station
+            const w3Canvas = document.createElement('canvas');
+            w3Canvas.width = 512; w3Canvas.height = 512;
+            const w3Ctx = w3Canvas.getContext('2d');
+            w3Ctx.fillStyle = '#221a18'; w3Ctx.fillRect(0, 0, 512, 512);
+            w3Ctx.strokeStyle = '#110d0c'; w3Ctx.lineWidth = 3;
+            for (let y = 0; y < 512; y += 32) {
+                w3Ctx.beginPath(); w3Ctx.moveTo(0, y); w3Ctx.lineTo(512, y); w3Ctx.stroke();
+            }
+            const wallL3 = new THREE.CanvasTexture(w3Canvas);
+            wallL3.wrapS = THREE.RepeatWrapping; wallL3.wrapT = THREE.RepeatWrapping;
+
+            // LEVEL 4: Abandoned Office
+            const w4Canvas = document.createElement('canvas');
+            w4Canvas.width = 512; w4Canvas.height = 512;
+            const w4Ctx = w4Canvas.getContext('2d');
+            w4Ctx.fillStyle = '#2d382e'; w4Ctx.fillRect(0, 0, 512, 512);
+            w4Ctx.fillStyle = '#1e261f';
+            for (let x = 0; x < 512; x += 64) w4Ctx.fillRect(x, 0, 8, 512);
+            const wallL4 = new THREE.CanvasTexture(w4Canvas);
+            wallL4.wrapS = THREE.RepeatWrapping; wallL4.wrapT = THREE.RepeatWrapping;
+
+            return {
+                L0: { wall: wallL0, floor: carpetL0, color: 0x141208, fog: 0x141208, light: 0xfff6be, name: "LEVEL 0: THE SUBROOMS", monsterName: "Bacteria" },
+                L1: { wall: wallL1, floor: floorL1, color: 0x0a0b0d, fog: 0x0a0b0d, light: 0xccd8e0, name: "LEVEL 1: HABITABLE ZONE", monsterName: "Skin-Stealer" },
+                L2: { wall: wallL2, floor: floorL1, color: 0x120804, fog: 0x120804, light: 0xff7733, name: "LEVEL 2: PIPE DREAMS", monsterName: "The Clump" },
+                L3: { wall: wallL3, floor: floorL1, color: 0x0a0303, fog: 0x0a0303, light: 0xff2222, name: "LEVEL 3: ELECTRICAL STATION", monsterName: "The Hound" },
+                L4: { wall: wallL4, floor: floorL1, color: 0x030d06, fog: 0x030d06, light: 0x33ff88, name: "LEVEL 4: ABANDONED OFFICE", monsterName: "The Faceling" }
+            };
+        }
+
+        // --- GAME PARAMETERS ---
+        const LANES = [-2.4, 0, 2.4];
+        const SEGMENT_LEN = 24;
+        const VISIBLE_SEGMENTS = 7;
+        const METERS_PER_LEVEL = 1000;
+
+        let scene, camera, renderer;
+        let levelTexData;
+        let currentLevelIndex = 0;
+        let isNoclipping = false;
+        let isStoryMode = true;
+
+        let wallMat, floorMat, ceilMat, lightMat, baseboardMat;
+        let flashlight;
+        let segments = [];
+        let obstacles = [];
+        let items = [];
+        let lightsList = [];
+
+        let gameState = 'MENU';
+        let currentLane = 1;
+        let targetX = 0;
+        let playerY = 0;
+        let jumpVel = 0;
+        let isJumping = false;
+        let isSliding = false;
+        let slideTimer = 0;
+        let isLookingBack = false;
+
+        let playerZ = 0;
+        let speed = 20;
+        let score = 0;
+        let waterCount = 0;
+        let highScore = localStorage.getItem('backrooms_pro_hs') || 0;
+
+        let stepTimer = 0;
+        let camTimerSec = 0;
+        let camTimerInterval = null;
+
+        let monsterGroup;
+        let monsterJoints = []; // Gewrichten voor geanimeerde ledematen
+        let entityDistance = 8.0;
+        let jumpscareProgress = 0;
+
+        let dustParticles;
+        let headBobTime = 0;
+        let cameraRoll = 0;
+
+        const playerBox = new THREE.Box3();
+
+        function initEngine() {
+            const canvas = document.getElementById('game-canvas');
+            scene = new THREE.Scene();
+            
+            levelTexData = generateLevelTextures();
+            const curData = levelTexData.L0;
+
+            scene.background = new THREE.Color(curData.color);
+            scene.fog = new THREE.FogExp2(curData.fog, 0.038);
+
+            camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 1.6, 0);
+
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            flashlight = new THREE.SpotLight(0xfff5cc, 3.8, 32, Math.PI / 3.8, 0.5, 1.8);
+            flashlight.castShadow = true;
+            camera.add(flashlight);
+            flashlight.position.set(0, 0, 0);
+            flashlight.target.position.set(0, 0, -1);
+            camera.add(flashlight.target);
+            scene.add(camera);
+
+            baseboardMat = new THREE.MeshStandardMaterial({ color: 0xe8e4d3, roughness: 0.5 });
+
+            updateLevelMaterials(0);
+
+            const amb = new THREE.AmbientLight(0xfff0a3, 0.28);
+            scene.add(amb);
+
+            createDustParticles();
+            createMonsterForLevel(0);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function updateLevelMaterials(levelIdx) {
+            currentLevelIndex = levelIdx;
+            let key = 'L' + Math.min(levelIdx, 4);
+            let data = levelTexData[key];
+
+            document.getElementById('level-hud-name').innerText = data.name;
+            document.getElementById('monster-type-val').innerText = data.monsterName;
+
+            scene.background = new THREE.Color(data.color);
+            scene.fog.color = new THREE.Color(data.fog);
+
+            data.wall.repeat.set(1, 1);
+            wallMat = new THREE.MeshStandardMaterial({ map: data.wall, roughness: 0.75, metalness: 0.05 });
+
+            data.floor.repeat.set(1, 4);
+            floorMat = new THREE.MeshStandardMaterial({ map: data.floor, roughness: 0.8, metalness: 0.05 });
+
+            ceilMat = new THREE.MeshStandardMaterial({ color: 0x8c8775, roughness: 0.7 });
+            lightMat = new THREE.MeshBasicMaterial({ color: data.light });
+
+            createMonsterForLevel(levelIdx);
+        }
+
+        function createDustParticles() {
+            const count = 400;
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            for (let i = 0; i < count * 3; i += 3) {
+                pos[i] = (Math.random() - 0.5) * 12;
+                pos[i+1] = Math.random() * 3.5;
+                pos[i+2] = -Math.random() * 80;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const mat = new THREE.PointsMaterial({ color: 0xffe89e, size: 0.045, transparent: true, opacity: 0.45 });
+            dustParticles = new THREE.Points(geo, mat);
+            scene.add(dustParticles);
+        }
+
+        // --- GEANIMEERDE GELEDE MONSTERS (GEBOUWD MET HIERARCHISCHE GEWRICHTEN) ---
+        function createMonsterForLevel(levelIdx) {
+            if (monsterGroup) scene.remove(monsterGroup);
+
+            monsterGroup = new THREE.Group();
+            monsterJoints = [];
+            const level = Math.min(levelIdx, 4);
+
+            if (level === 0) {
+                // LEVEL 0: Gelede Spastische Bacteria
+                const bodyMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), bodyMat);
+                head.position.y = 2.8;
+                monsterGroup.add(head);
+
+                const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.1, 2.5, 12), bodyMat);
+                torso.position.y = 1.5;
+                monsterGroup.add(torso);
+
+                // Gelede spastische armen
+                for (let side = -1; side <= 1; side += 2) {
+                    const shoulder = new THREE.Group();
+                    shoulder.position.set(side * 0.3, 2.2, -0.1);
+                    monsterGroup.add(shoulder);
+
+                    const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 1.2), bodyMat);
+                    upperArm.position.y = -0.6;
+                    shoulder.add(upperArm);
+
+                    const elbow = new THREE.Group();
+                    elbow.position.y = -1.2;
+                    shoulder.add(elbow);
+
+                    const lowerArm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.03, 1.2), bodyMat);
+                    lowerArm.position.y = -0.6;
+                    elbow.add(lowerArm);
+
+                    monsterJoints.push({ shoulder, elbow, side });
+                }
+
+                const faceMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+                const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.1), faceMat);
+                leftEye.position.set(-0.18, 2.85, -0.35);
+                monsterGroup.add(leftEye);
+
+                const rightEye = new THREE.Mesh(new THREE.SphereGeometry(0.1), faceMat);
+                rightEye.position.set(0.18, 2.85, -0.35);
+                monsterGroup.add(rightEye);
+
+                const smile = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.32, 16, 1, 0, Math.PI), faceMat);
+                smile.rotation.z = Math.PI;
+                smile.position.set(0, 2.6, -0.35);
+                monsterGroup.add(smile);
+
+                const redLight = new THREE.PointLight(0xff0000, 4.0, 12);
+                redLight.position.set(0, 2.5, -0.5);
+                monsterGroup.add(redLight);
+
+            } else if (level === 1) {
+                // LEVEL 1: Skin-Stealer (Rennende humanoïde jager)
+                const skinMat = new THREE.MeshStandardMaterial({ color: 0xc4b7a1, roughness: 0.9 });
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 12), skinMat);
+                head.position.y = 2.6;
+                monsterGroup.add(head);
+
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.18, 2.0, 12), skinMat);
+                body.position.y = 1.4;
+                monsterGroup.add(body);
+
+                for (let side = -1; side <= 1; side += 2) {
+                    const shoulder = new THREE.Group();
+                    shoulder.position.set(side * 0.4, 2.1, -0.2);
+                    monsterGroup.add(shoulder);
+
+                    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.04, 2.2), skinMat);
+                    arm.position.y = -1.1;
+                    shoulder.add(arm);
+
+                    monsterJoints.push({ shoulder, side });
+                }
+
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.08), eyeMat);
+                lEye.position.set(-0.16, 2.65, -0.3);
+                monsterGroup.add(lEye);
+
+                const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.08), eyeMat);
+                rEye.position.set(0.16, 2.65, -0.3);
+                monsterGroup.add(rEye);
+
+            } else if (level === 2) {
+                // LEVEL 2: The Clump (Gelede wriggling tentakels)
+                const darkMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3, metalness: 0.7 });
+                for (let i = 0; i < 6; i++) {
+                    const baseJoint = new THREE.Group();
+                    baseJoint.position.set((i - 2.5) * 0.25, 0.5, 0);
+                    monsterGroup.add(baseJoint);
+
+                    const segment = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.04, 2.2, 8), darkMat);
+                    segment.position.y = 1.1;
+                    baseJoint.add(segment);
+
+                    monsterJoints.push({ baseJoint, index: i });
+                }
+                const yellowLight = new THREE.PointLight(0xffaa00, 4.0, 10);
+                yellowLight.position.set(0, 2.0, -0.4);
+                monsterGroup.add(yellowLight);
+
+            } else if (level === 3) {
+                // LEVEL 3: The Hound (Viervoetige galop-jager)
+                const houndMat = new THREE.MeshStandardMaterial({ color: 0x1a120b, roughness: 0.9 });
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 2.0), houndMat);
+                body.position.set(0, 0.7, 0);
+                monsterGroup.add(body);
+
+                const headJoint = new THREE.Group();
+                headJoint.position.set(0, 0.9, -1.0);
+                monsterGroup.add(headJoint);
+
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 12), houndMat);
+                head.position.set(0, 0, -0.3);
+                headJoint.add(head);
+
+                const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.4), houndMat);
+                jaw.position.set(0, -0.2, -0.4);
+                headJoint.add(jaw);
+
+                monsterJoints.push({ headJoint, jaw });
+
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+                const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.08), eyeMat);
+                lEye.position.set(-0.18, 0.1, -0.5);
+                headJoint.add(lEye);
+
+                const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.08), eyeMat);
+                rEye.position.set(0.18, 0.1, -0.5);
+                headJoint.add(rEye);
+
+            } else if (level === 4) {
+                // LEVEL 4: The Faceling
+                const suitMat = new THREE.MeshStandardMaterial({ color: 0x0f141a, roughness: 0.5 });
+                const faceMat = new THREE.MeshStandardMaterial({ color: 0xf5f0eb, roughness: 0.2 });
+
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.25, 2.4, 16), suitMat);
+                body.position.y = 1.6;
+                monsterGroup.add(body);
+
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 16, 16), faceMat);
+                head.position.y = 3.0;
+                monsterGroup.add(head);
+
+                monsterJoints.push({ head });
+            }
+
+            scene.add(monsterGroup);
+        }
+
+        function addLevelDecorations(seg, zPos) {
+            const level = Math.min(currentLevelIndex, 4);
+
+            if (level === 0) {
+                if (Math.random() < 0.5) {
+                    const colWidth = 1.8, colHeight = 3.5, colDepth = 1.8;
+                    const pillarGeo = new THREE.BoxGeometry(colWidth, colHeight, colDepth);
+                    const pillar = new THREE.Mesh(pillarGeo, wallMat);
+                    pillar.position.set(0, 1.75, -SEGMENT_LEN / 2);
+                    pillar.castShadow = true;
+
+                    const colTrimGeo = new THREE.BoxGeometry(colWidth + 0.1, 0.18, colDepth + 0.1);
+                    const colTrim = new THREE.Mesh(colTrimGeo, baseboardMat);
+                    colTrim.position.set(0, -1.65, 0);
+                    pillar.add(colTrim);
+
+                    seg.add(pillar);
+                }
+            } else if (level === 1) {
+                if (Math.random() < 0.5) {
+                    const barrelGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.4, 16);
+                    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x5a4128, roughness: 0.7 });
+                    const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+                    const side = Math.random() < 0.5 ? -3.5 : 3.5;
+                    barrel.position.set(side, 0.7, -SEGMENT_LEN / 2);
+                    barrel.castShadow = true;
+                    seg.add(barrel);
+                }
+            } else if (level === 2) {
+                const pipeGeo = new THREE.CylinderGeometry(0.12, 0.12, SEGMENT_LEN, 12);
+                pipeGeo.rotateX(Math.PI / 2);
+                const pipeMat = new THREE.MeshStandardMaterial({ color: 0x663311, metalness: 0.8, roughness: 0.4 });
+                
+                const pipeL = new THREE.Mesh(pipeGeo, pipeMat);
+                pipeL.position.set(-4.2, 2.2, -SEGMENT_LEN / 2);
+                seg.add(pipeL);
+
+                const pipeR = new THREE.Mesh(pipeGeo, pipeMat);
+                pipeR.position.set(4.2, 1.5, -SEGMENT_LEN / 2);
+                seg.add(pipeR);
+            } else if (level === 3) {
+                if (Math.random() < 0.6) {
+                    const boxGeo = new THREE.CylinderGeometry(0.4, 0.4, 1.8, 12);
+                    const boxMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.7 });
+                    const elecBox = new THREE.Mesh(boxGeo, boxMat);
+                    const side = Math.random() < 0.5 ? -4.2 : 4.2;
+                    elecBox.position.set(side, 1.6, -SEGMENT_LEN / 2);
+                    seg.add(elecBox);
+                }
+            } else if (level === 4) {
+                if (Math.random() < 0.5) {
+                    const deskGeo = new THREE.CylinderGeometry(0.8, 0.8, 0.9, 16);
+                    const deskMat = new THREE.MeshStandardMaterial({ color: 0x223322, roughness: 0.6 });
+                    const desk = new THREE.Mesh(deskGeo, deskMat);
+                    desk.position.set(3.4, 0.45, -SEGMENT_LEN / 2);
+                    seg.add(desk);
+                }
+            }
+        }
+
+        function spawnSegment(zPos) {
+            const seg = new THREE.Group();
+            seg.position.z = zPos;
+            const w = 8.8, h = 3.5;
+
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, SEGMENT_LEN), floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.set(0, 0, -SEGMENT_LEN / 2);
+            floor.receiveShadow = true;
+            seg.add(floor);
+
+            const ceil = new THREE.Mesh(new THREE.PlaneGeometry(w, SEGMENT_LEN), ceilMat);
+            ceil.rotation.x = Math.PI / 2;
+            ceil.position.set(0, h, -SEGMENT_LEN / 2);
+            seg.add(ceil);
+
+            const wallGeo = new THREE.PlaneGeometry(SEGMENT_LEN, h);
+            const lWall = new THREE.Mesh(wallGeo, wallMat);
+            lWall.rotation.y = Math.PI / 2;
+            lWall.position.set(-w / 2, h / 2, -SEGMENT_LEN / 2);
+            seg.add(lWall);
+
+            const rWall = new THREE.Mesh(wallGeo, wallMat);
+            rWall.rotation.y = -Math.PI / 2;
+            rWall.position.set(w / 2, h / 2, -SEGMENT_LEN / 2);
+            seg.add(rWall);
+
+            const trimGeo = new THREE.BoxGeometry(SEGMENT_LEN, 0.18, 0.06);
+            const lTrim = new THREE.Mesh(trimGeo, baseboardMat);
+            lTrim.rotation.y = Math.PI / 2;
+            lTrim.position.set(-w / 2 + 0.03, 0.09, -SEGMENT_LEN / 2);
+            seg.add(lTrim);
+
+            const rTrim = new THREE.Mesh(trimGeo, baseboardMat);
+            rTrim.rotation.y = -Math.PI / 2;
+            rTrim.position.set(w / 2 - 0.03, 0.09, -SEGMENT_LEN / 2);
+            seg.add(rTrim);
+
+            const lightTileGeo = new THREE.PlaneGeometry(1.6, 1.6);
+            const lightTile = new THREE.Mesh(lightTileGeo, lightMat);
+            lightTile.rotation.x = Math.PI / 2;
+            lightTile.position.set(0, h - 0.02, -SEGMENT_LEN / 2);
+            seg.add(lightTile);
+
+            const key = 'L' + Math.min(currentLevelIndex, 4);
+            const pLight = new THREE.PointLight(levelTexData[key].light, 1.5, 16);
+            pLight.position.set(0, h - 0.3, -SEGMENT_LEN / 2);
+            pLight.castShadow = true;
+            seg.add(pLight);
+
+            lightsList.push({ light: pLight, baseIntensity: 1.5, z: zPos - SEGMENT_LEN / 2 });
+
+            addLevelDecorations(seg, zPos);
+
+            scene.add(seg);
+            segments.push(seg);
+
+            if (Math.abs(zPos) > SEGMENT_LEN * 2 && gameState === 'PLAYING') {
+                spawnObstaclesAndItems(zPos);
+            }
+        }
+
+        function spawnObstaclesAndItems(zPos) {
+            const availLanes = [0, 1, 2];
+            const numObs = Math.random() > 0.5 ? 2 : 1;
+
+            for (let i = 0; i < numObs; i++) {
+                const laneIdx = Math.floor(Math.random() * availLanes.length);
+                const lane = availLanes.splice(laneIdx, 1)[0];
+                const x = LANES[lane];
+                const z = zPos - Math.random() * (SEGMENT_LEN - 6) - 3;
+
+                const type = Math.random();
+
+                if (type < 0.35) {
+                    const geo = new THREE.CylinderGeometry(0.4, 0.4, 2.0, 16);
+                    geo.rotateZ(Math.PI / 2);
+                    const mat = new THREE.MeshStandardMaterial({ color: 0x3d3522, roughness: 0.8 });
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.set(x, 0.4, z);
+                    mesh.castShadow = true;
+                    scene.add(mesh);
+                    obstacles.push({ mesh, type: 'JUMP', lane });
+                } else if (type < 0.7) {
+                    const group = new THREE.Group();
+                    const ductGeo = new THREE.CylinderGeometry(0.45, 0.45, 2.2, 16);
+                    ductGeo.rotateZ(Math.PI / 2);
+                    const ductMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.3 });
+                    const duct = new THREE.Mesh(ductGeo, ductMat);
+                    duct.position.set(x, 2.35, z);
+                    group.add(duct);
+
+                    scene.add(group);
+                    obstacles.push({ mesh: group, type: 'SLIDE', lane, customZ: z });
+                } else {
+                    const geo = new THREE.CylinderGeometry(1.0, 1.0, 3.5, 16);
+                    const mesh = new THREE.Mesh(geo, wallMat);
+                    mesh.position.set(x, 1.75, z);
+                    mesh.castShadow = true;
+                    scene.add(mesh);
+                    obstacles.push({ mesh, type: 'WALL', lane });
+                }
+            }
+
+            if (availLanes.length > 0 && Math.random() > 0.35) {
+                const lane = availLanes[Math.floor(Math.random() * availLanes.length)];
+                const x = LANES[lane];
+                const z = zPos - (SEGMENT_LEN / 2);
+
+                const group = new THREE.Group();
+                const bGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.5, 16);
+                const bMat = new THREE.MeshStandardMaterial({ color: 0x00e1ff, roughness: 0.1, transparent: true, opacity: 0.85 });
+                const bottle = new THREE.Mesh(bGeo, bMat);
+                group.add(bottle);
+
+                group.position.set(x, 0.9, z);
+                scene.add(group);
+                items.push({ mesh: group, z, lane, active: true });
+            }
+        }
+
+        // --- NOCLIP LEVEL TRANSITION ---
+        function triggerNoclipTransition(nextLevelIndex) {
+            isNoclipping = true;
+            audio.playNoclipSound();
+
+            const banner = document.getElementById('level-transition-banner');
+            const key = 'L' + Math.min(nextLevelIndex, 4);
+            const levelData = levelTexData[key];
+
+            document.getElementById('trans-title').innerText = "NOCLIPPING...";
+            document.getElementById('trans-subtitle').innerText = "ENTERING " + levelData.name;
+            banner.style.opacity = '1';
+
+            let fallProgress = 0;
+
+            const noclipInterval = setInterval(() => {
+                fallProgress += 0.04;
+                camera.position.y -= fallProgress * fallProgress * 1.8;
+                camera.rotation.x += 0.08;
+
+                if (fallProgress >= 1.0) {
+                    clearInterval(noclipInterval);
+
+                    updateLevelMaterials(nextLevelIndex);
+
+                    camera.position.y = 1.6;
+                    camera.rotation.x = 0;
+                    entityDistance = 8.0; 
+                    isNoclipping = false;
+
+                    setTimeout(() => {
+                        banner.style.opacity = '0';
+                    }, 800);
+                }
+            }, 30);
+        }
+
+        // --- INTRO SEQUENCE ---
+        function runIntroSequence(showFullStory) {
+            gameState = 'INTRO';
+            document.getElementById('start-screen').classList.add('hidden');
+
+            if (showFullStory) {
+                document.getElementById('subtitles').classList.remove('hidden');
+
+                camera.position.set(0, 0.25, 0);
+                camera.rotation.set(Math.PI / 3, 0, Math.PI / 5);
+
+                const subs = document.getElementById('subtitles');
+
+                subs.innerText = "* WAKKER WORDEN OP VOCHTIG TAPIJT *";
+                audio.playBreathing();
+
+                setTimeout(() => {
+                    subs.innerText = "Mijn hoofd... Waar in hemelsnaam ben ik?";
+                    audio.playLightFlickerSound();
+                    flickerAllLights();
+                }, 2500);
+
+                setTimeout(() => {
+                    subs.innerText = "Waarom zijn al deze muren geel?! Waar zijn de deuren?";
+                }, 5500);
+
+                setTimeout(() => {
+                    subs.innerText = "* STAAT LANGZAAM OP *";
+                    let getUpProgress = 0;
+                    const getUpInterval = setInterval(() => {
+                        getUpProgress += 0.025;
+                        camera.position.y = THREE.MathUtils.lerp(0.25, 1.6, getUpProgress);
+                        camera.rotation.x = THREE.MathUtils.lerp(Math.PI / 3, 0, getUpProgress);
+                        camera.rotation.z = THREE.MathUtils.lerp(Math.PI / 5, 0, getUpProgress);
+
+                        if (getUpProgress >= 1) clearInterval(getUpInterval);
+                    }, 30);
+                }, 8000);
+
+                setTimeout(() => {
+                    subs.innerText = "* ER IS IETS IN DE SCHADUW HIER ACHTER... *";
+                    audio.playJumpscareRoar();
+                    flickerAllLights();
+                }, 11500);
+
+                setTimeout(() => {
+                    subs.innerText = "WAT IS DAT VOOR DING?! REN! GEBRUIK [R] OM ACHTEROM TE KIJKEN!";
+                    setTimeout(() => {
+                        subs.classList.add('hidden');
+                        startActualGameplay();
+                    }, 2000);
+                }, 13500);
+            } else {
+                camera.position.set(0, 1.6, 0);
+                camera.rotation.set(0, 0, 0);
+                startActualGameplay();
+            }
+        }
+
+        function flickerAllLights() {
+            lightsList.forEach(l => {
+                l.light.intensity = 0.05;
+                setTimeout(() => l.light.intensity = l.baseIntensity, 80 + Math.random() * 250);
+            });
+        }
+
+        function startActualGameplay() {
+            gameState = 'PLAYING';
+            document.getElementById('hud-cam').classList.remove('hidden');
+            document.getElementById('look-back-container').classList.remove('hidden');
+
+            camTimerSec = 0;
+            if (camTimerInterval) clearInterval(camTimerInterval);
+            camTimerInterval = setInterval(() => {
+                camTimerSec++;
+                const hrs = String(Math.floor(camTimerSec / 3600)).padStart(2, '0');
+                const mins = String(Math.floor((camTimerSec % 3600) / 60)).padStart(2, '0');
+                const secs = String(camTimerSec % 60).padStart(2, '0');
+                document.getElementById('cam-timer').innerText = `${hrs}:${mins}:${secs}`;
+            }, 1000);
+        }
+
+        // --- CINEMATISCHE JUMPSCARE ---
+        function triggerJumpscare(reason) {
+            gameState = 'JUMPSCARE';
+            jumpscareProgress = 0;
+            audio.playJumpscareRoar();
+
+            document.getElementById('hud-cam').classList.add('hidden');
+            document.getElementById('look-back-container').classList.add('hidden');
+
+            const flashEl = document.getElementById('jumpscare-flash');
+            flashEl.style.opacity = '1';
+
+            const startCamY = camera.position.y;
+            const startCamZ = camera.position.z;
+            const level = Math.min(currentLevelIndex, 4);
+
+            monsterGroup.position.set(camera.position.x, 0.3, camera.position.z + 1.1);
+            monsterGroup.scale.set(2.2, 2.2, 2.2);
+
+            const jumpscareInterval = setInterval(() => {
+                jumpscareProgress += 0.06;
+                const easeProg = Math.pow(jumpscareProgress, 2);
+
+                if (level === 2) {
+                    camera.position.y = THREE.MathUtils.lerp(startCamY, 3.2, easeProg);
+                    camera.rotation.x = THREE.MathUtils.lerp(0, Math.PI / 4, easeProg);
+                } else if (level === 4) {
+                    camera.position.y = THREE.MathUtils.lerp(startCamY, 1.6, easeProg);
+                    monsterGroup.position.z = THREE.MathUtils.lerp(startCamZ + 1.1, camera.position.z + 0.2, easeProg);
+                } else {
+                    camera.position.y = THREE.MathUtils.lerp(startCamY, 0.25, Math.min(easeProg * 1.8, 1));
+                    camera.rotation.x = THREE.MathUtils.lerp(0, -Math.PI / 5, easeProg);
+                    camera.rotation.y = THREE.MathUtils.lerp(camera.rotation.y, Math.PI, Math.min(easeProg * 1.4, 1));
+                    monsterGroup.position.z = THREE.MathUtils.lerp(startCamZ + 1.1, camera.position.z + 0.35, easeProg);
+                }
+
+                camera.rotation.z = Math.sin(jumpscareProgress * 22) * 0.25;
+                monsterGroup.position.x = camera.position.x + (Math.random() - 0.5) * 0.2;
+
+                if (Math.random() < 0.5) {
+                    flashEl.style.opacity = (0.5 + Math.random() * 0.5).toString();
+                }
+
+                if (jumpscareProgress >= 1) {
+                    clearInterval(jumpscareInterval);
+                    setTimeout(() => {
+                        flashEl.style.opacity = '0';
+                        showGameOverMenu(reason);
+                    }, 500);
+                }
+            }, 30);
+        }
+
+        function showGameOverMenu(reason) {
+            gameState = 'GAMEOVER';
+            if (camTimerInterval) clearInterval(camTimerInterval);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('backrooms_pro_hs', highScore);
+            }
+
+            document.getElementById('death-cause').innerText = reason;
+            document.getElementById('final-score').innerText = score + 'm';
+            document.getElementById('final-level').innerText = 'Level ' + currentLevelIndex;
+            document.getElementById('final-water').innerText = waterCount;
+            document.getElementById('high-score').innerText = highScore + 'm';
+
+            document.getElementById('gameover-screen').classList.remove('hidden');
+        }
+
+        function returnToMainMenu() {
+            gameState = 'MENU';
+            document.getElementById('gameover-screen').classList.add('hidden');
+            document.getElementById('hud-cam').classList.add('hidden');
+            document.getElementById('look-back-container').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+            switchPage('menu-page-main');
+        }
+
+        // --- PROCEDURALE MONSTER ANIMATIE UPDATE ---
+        function animateMonsterJoints(time) {
+            const level = Math.min(currentLevelIndex, 4);
+
+            if (level === 0 && monsterJoints.length >= 2) {
+                // Bacteria armen wriemelen
+                monsterJoints.forEach(j => {
+                    j.shoulder.rotation.z = Math.sin(time * 8 + j.side) * 0.3 + (j.side * 0.3);
+                    j.elbow.rotation.x = Math.cos(time * 10) * 0.4;
+                });
+            } else if (level === 1 && monsterJoints.length >= 2) {
+                // Skin-stealer zwaaiende armen
+                monsterJoints.forEach(j => {
+                    j.shoulder.rotation.x = Math.sin(time * 12 + j.side * Math.PI) * 0.6;
+                });
+            } else if (level === 2) {
+                // The clump wriemelende tentakels
+                monsterJoints.forEach(j => {
+                    j.baseJoint.rotation.z = Math.sin(time * 6 + j.index) * 0.4;
+                    j.baseJoint.rotation.x = Math.cos(time * 8 + j.index) * 0.3;
+                });
+            } else if (level === 3 && monsterJoints.length > 0) {
+                // The hound klappende kaak
+                monsterJoints[0].headJoint.rotation.z = Math.sin(time * 14) * 0.15;
+                if (monsterJoints[0].jaw) {
+                    monsterJoints[0].jaw.rotation.x = Math.sin(time * 16) * 0.2 + 0.2;
+                }
+            } else if (level === 4 && monsterJoints.length > 0) {
+                // Faceling spastische head tilt
+                monsterJoints[0].head.rotation.z = Math.sin(time * 4) * 0.1;
+                monsterJoints[0].head.rotation.y = Math.cos(time * 3) * 0.15;
+            }
+        }
+
+        function updateGame(delta) {
+            const time = Date.now() * 0.001;
+
+            if (dustParticles) {
+                const positions = dustParticles.geometry.attributes.position.array;
+                for (let i = 2; i < positions.length; i += 3) {
+                    positions[i] += delta * 5;
+                    if (positions[i] > camera.position.z + 5) {
+                        positions[i] = camera.position.z - 70;
+                    }
+                }
+                dustParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            if (gameState === 'MENU') {
+                camera.position.z -= delta * 1.5;
+                camera.position.x = Math.sin(time * 0.8) * 1.2;
+                camera.rotation.y = Math.sin(time * 0.5) * 0.15;
+                camera.position.y = 1.6;
+
+                if (camera.position.z < -SEGMENT_LEN * 2) {
+                    camera.position.z = 0;
+                }
+                return;
+            }
+
+            if (Math.random() < 0.035 && lightsList.length > 0) {
+                const randomLight = lightsList[Math.floor(Math.random() * lightsList.length)];
+                randomLight.light.intensity = Math.random() < 0.5 ? 0.05 : 1.7;
+                if (Math.random() < 0.25) audio.playLightFlickerSound();
+                setTimeout(() => randomLight.light.intensity = randomLight.baseIntensity, 90);
+            }
+
+            if (gameState !== 'PLAYING') return;
+
+            speed += delta * 0.22;
+            playerZ -= speed * delta;
+            score = Math.floor(-playerZ);
+
+            document.getElementById('score-val').innerText = score;
+            document.getElementById('monster-dist-val').innerText = entityDistance.toFixed(1) + 'm';
+
+            // LEVEL OVERGANG OM DE 1000 METER
+            if (isStoryMode) {
+                const targetLevel = Math.floor(score / METERS_PER_LEVEL);
+                if (targetLevel > currentLevelIndex && !isNoclipping) {
+                    triggerNoclipTransition(targetLevel);
+                }
+            }
+
+            // SOEPELE INTERPOLATIE & CAMERA BANKING
+            targetX = LANES[currentLane];
+            const dx = targetX - camera.position.x;
+            camera.position.x += dx * delta * 10;
+            cameraRoll = -dx * 0.06;
+
+            if (isJumping) {
+                playerY += jumpVel * delta;
+                jumpVel -= 26 * delta;
+
+                if (playerY <= 0) {
+                    playerY = 0;
+                    isJumping = false;
+                    camera.position.y -= 0.12;
+                    audio.playFootstep(true);
+                }
+            }
+
+            if (isSliding) {
+                slideTimer -= delta;
+                if (slideTimer <= 0) isSliding = false;
+            }
+
+            if (!isNoclipping) {
+                headBobTime += delta * speed * 0.65;
+                const bobY = isJumping ? 0 : Math.sin(headBobTime * 2) * 0.05;
+                const camBaseY = isSliding ? 0.7 : 1.6;
+
+                camera.position.y = THREE.MathUtils.lerp(camera.position.y, camBaseY + playerY + bobY, delta * 12);
+            }
+
+            camera.position.z = playerZ;
+
+            // KIJK ACHTEROM MECHANISME
+            const targetRotY = isLookingBack ? Math.PI : 0;
+            camera.rotation.y = THREE.MathUtils.lerp(camera.rotation.y, targetRotY, delta * 10);
+            camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, isLookingBack ? -cameraRoll : cameraRoll, delta * 8);
+
+            stepTimer += delta * speed;
+            if (stepTimer > 2.3 && !isJumping && !isNoclipping) {
+                audio.playFootstep(true);
+                stepTimer = 0;
+            }
+
+            // MONSTER VOLGEN & ANIMEREN
+            monsterGroup.position.z = playerZ + entityDistance;
+            monsterGroup.position.x = THREE.MathUtils.lerp(monsterGroup.position.x, camera.position.x, delta * 3.5);
+            monsterGroup.position.y = 0.2 + Math.sin(time * 8) * 0.12;
+
+            animateMonsterJoints(time);
+
+            const playerHeight = isSliding ? 0.7 : 1.6;
+            playerBox.min.set(camera.position.x - 0.35, camera.position.y - playerHeight + 0.2, playerZ - 0.2);
+            playerBox.max.set(camera.position.x + 0.35, camera.position.y + 0.2, playerZ + 0.2);
+
+            // BOTSINGEN (Niet controleren als speler aan het noclippen is)
+            if (!isNoclipping) {
+                for (let obs of obstacles) {
+                    const obsBox = new THREE.Box3().setFromObject(obs.mesh);
+                    if (playerBox.intersectsBox(obsBox)) {
+                        triggerJumpscare("Je botste hard tegen een obstakel en het wezen heeft je overmeesterd!");
+                        return;
+                    }
+                }
+
+                entityDistance -= delta * 0.085;
+                if (entityDistance <= 1.2) {
+                    triggerJumpscare("Het onbekende wezen heeft je gegrepen van achteren!");
+                    return;
+                }
+            }
+
+            for (let item of items) {
+                if (item.active) {
+                    item.mesh.rotation.y += delta * 3;
+                    const itemBox = new THREE.Box3().setFromObject(item.mesh);
+                    if (playerBox.intersectsBox(itemBox)) {
+                        item.active = false;
+                        scene.remove(item.mesh);
+                        waterCount++;
+                        document.getElementById('water-val').innerText = waterCount;
+                        audio.playCollect();
+                        entityDistance = Math.min(entityDistance + 2.0, 11.0);
+                    }
+                }
+            }
+
+            const lastSegZ = segments[segments.length - 1].position.z;
+            if (playerZ < lastSegZ + (VISIBLE_SEGMENTS - 2) * SEGMENT_LEN) {
+                const oldSeg = segments.shift();
+                scene.remove(oldSeg);
+
+                const newZ = lastSegZ - SEGMENT_LEN;
+                spawnSegment(newZ);
+
+                lightsList = lightsList.filter(l => l.z < playerZ + 15);
+                cleanupOldObjects(playerZ + 15);
+            }
+        }
+
+        function cleanupOldObjects(clearZ) {
+            obstacles = obstacles.filter(obs => {
+                const z = obs.mesh.position.z || obs.customZ;
+                if (z > clearZ) {
+                    scene.remove(obs.mesh);
+                    return false;
+                }
+                return true;
+            });
+
+            items = items.filter(item => {
+                if (item.z > clearZ) {
+                    scene.remove(item.mesh);
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        // --- CONTROLS ---
+        function moveLeft() { if (currentLane > 0) currentLane--; }
+        function moveRight() { if (currentLane < 2) currentLane++; }
+        function jump() {
+            if (!isJumping && !isSliding) {
+                isJumping = true;
+                jumpVel = 9.8;
+                audio.playJump();
+            }
+        }
+        function slide() {
+            if (!isSliding && !isJumping) {
+                isSliding = true;
+                slideTimer = 0.85;
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyR') isLookingBack = true;
+
+            if (gameState !== 'PLAYING') return;
+            switch (e.code) {
+                case 'ArrowLeft': case 'KeyA': moveLeft(); break;
+                case 'ArrowRight': case 'KeyD': moveRight(); break;
+                case 'ArrowUp': case 'KeyW': case 'Space': jump(); break;
+                case 'ArrowDown': case 'KeyS': slide(); break;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyR') isLookingBack = false;
+        });
+
+        const lookBackBtn = document.getElementById('look-back-btn');
+        lookBackBtn.addEventListener('mousedown', () => isLookingBack = true);
+        lookBackBtn.addEventListener('mouseup', () => isLookingBack = false);
+        lookBackBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isLookingBack = true; }, { passive: false });
+        lookBackBtn.addEventListener('touchend', (e) => { e.preventDefault(); isLookingBack = false; }, { passive: false });
+
+        let touchX = 0, touchY = 0;
+        window.addEventListener('touchstart', (e) => {
+            if (e.target === lookBackBtn) return;
+            touchX = e.touches[0].clientX;
+            touchY = e.touches[0].clientY;
+        }, { passive: true });
+
+        window.addEventListener('touchend', (e) => {
+            if (gameState !== 'PLAYING' || e.target === lookBackBtn) return;
+            const dx = e.changedTouches[0].clientX - touchX;
+            const dy = e.changedTouches[0].clientY - touchY;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (Math.abs(dx) > 30) (dx > 0) ? moveRight() : moveLeft();
+            } else {
+                if (Math.abs(dy) > 30) (dy < 0) ? jump() : slide();
+            }
+        }, { passive: true });
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function prepareGameStart(startLevelIndex, storyMode) {
+            audio.init();
+
+            for (let obs of obstacles) scene.remove(obs.mesh);
+            for (let item of items) scene.remove(item.mesh);
+            for (let seg of segments) scene.remove(seg);
+            obstacles = []; items = []; segments = []; lightsList = [];
+
+            camera.rotation.set(0, 0, 0);
+
+            isStoryMode = storyMode;
+            currentLevelIndex = startLevelIndex;
+            updateLevelMaterials(startLevelIndex);
+
+            currentLane = 1; playerZ = 0; playerY = 0; speed = 20; score = 0; waterCount = 0; entityDistance = 8.0;
+            isLookingBack = false;
+            isNoclipping = false;
+
+            for (let i = 0; i < VISIBLE_SEGMENTS; i++) {
+                spawnSegment(i * -SEGMENT_LEN);
+            }
+
+            document.getElementById('gameover-screen').classList.add('hidden');
+            runIntroSequence(isStoryMode && startLevelIndex === 0);
+        }
+
+        function startStoryMode() {
+            prepareGameStart(0, true);
+        }
+
+        function startSpecificLevel(levelIdx) {
+            prepareGameStart(levelIdx, false);
+        }
+
+        let lastTime = performance.now();
+        function animate(now) {
+            requestAnimationFrame(animate);
+            const delta = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            updateGame(delta);
+            renderer.render(scene, camera);
+        }
+
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            prepareGameStart(isStoryMode ? 0 : currentLevelIndex, isStoryMode);
+        });
+
+        document.getElementById('main-menu-btn').addEventListener('click', returnToMainMenu);
+
+        window.onload = () => {
+            initEngine();
+            for (let i = 0; i < VISIBLE_SEGMENTS; i++) {
+                spawnSegment(i * -SEGMENT_LEN);
+            }
+            animate(performance.now());
+        };
+    </script>
+</body>
+</html>
